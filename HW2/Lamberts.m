@@ -18,6 +18,7 @@ function [v1_N, v2_N, iterations] = Lamberts(mu, r1_N, r2_N, using_long_transfer
     f = @(a)Lamberts_root(a, mu, s, c, TOF, TOF_min, using_long_transfer_angle);
     delta_a = 10000;
     a0 = a_min + delta_a;
+    % tolerance = 10^-12;
     tolerance = 10^-12;
 %     options = optimoptions('fsolve','Display','iter', 'FunctionTolerance', tolerance, 'MaxIterations', 1000, 'MaxFunctionEvaluations', 1000);
 %     options = optimoptions('fsolve', 'FunctionTolerance', tolerance, 'MaxIterations', 1000, 'MaxFunctionEvaluations', 1000);
@@ -82,6 +83,8 @@ end
 function [alpha, beta] = getAlphaBeta(c, s, a, using_long_TOF, using_long_transfer_angle)
     alpha = 2*asin(sqrt(s/2/a));
     beta = 2*asin(sqrt((s-c)/2/a));
+    alpha = real(alpha);
+    beta = real(beta);
     if using_long_TOF
         alpha = 2*pi-alpha;
     end

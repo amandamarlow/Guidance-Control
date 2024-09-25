@@ -6,6 +6,8 @@ clear
 clc
 close all
 
+addpath("C:\Users\marlo\MATLAB Drive\6015")
+
 %% Problem 1
 
 Vm = 3000; % [ft/s]
@@ -68,5 +70,18 @@ v0 = sqrt(mu/r0);
 v0_N = [0;v0;0];
 x0_N = [r0_N; v0_N];
 at = 30/1000; % km/s^2
-options = odeset('RelTol',1e-12,'AbsTol',1e-12);
-[t,x] = ode45(@(t,x) LambertGuidance(t, x, rf_N, TOF, at, mu), [0 TOF], x0_N, options);
+[t_hist, x_hist] = LambertGuidance(x0_N, rf_N, TOF, at, mu);
+error_N = x_hist(end,1:3)'-rf_N;
+error = norm(error_N);
+%% plotting
+figure
+scatter(x_hist(:,1),x_hist(:,2), '.')
+hold on
+scatter(rf_N(1),rf_N(2),'*', 'LineWidth',4)
+axis equal
+
+figure
+for i=1:6
+    subplot(6,1,i)
+    plot(t_hist, x_hist(:,i))
+end
