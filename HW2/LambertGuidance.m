@@ -32,11 +32,13 @@ for i = 1:length(tspan)-1
     options = odeset('RelTol',1e-12,'AbsTol',1e-12);
     % [t_hist((i-1)*dataPointsInPeriod+1:i*dataPointsInPeriod),x_hist((i-1)*dataPointsInPeriod+1:i*dataPointsInPeriod,:)] = ode45(@(t,x) rdot_rddot(x, mu, at_N), linspace(tspan(i),tspan(i+1),dataPointsInPeriod), xi, options);
     burnTime = min(vg/at,update_period);
-    [t,x] = ode45(@(t,x) rdot_rddot(x, mu, at_N), [tspan(i) tspan(i)+burnTime], xi, options);
-    t_hist(end:end+length(t)-1,1) = t;
-    x_hist(end:end+length(t)-1,1:6) = x;
+    if burnTime > 1e-6
+        [t,x] = ode45(@(t,x) rdot_rddot(x, mu, at_N), [tspan(i) tspan(i)+burnTime], xi, options);
+        t_hist(end:end+length(t)-1,1) = t;
+        x_hist(end:end+length(t)-1,1:6) = x;
+    end
     if burnTime < update_period
-        [t,x] = ode45(@(t,x) rdot_rddot(x, mu, zeros(3,1)), [t_hist(end) tspan(i+1)], xi, options);
+        [t,x] = ode45(@(t,x) rdot_rddot(x, mu, zeros(3,1)), [t_hist(end) tspan(i+1)], x(end,:), options);
         t_hist(end:end+length(t)-1,1) = t;
         x_hist(end:end+length(t)-1,1:6) = x;
     end
