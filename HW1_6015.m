@@ -55,10 +55,11 @@ dV2 = sqrt(mu/a2) - sqrt(mu/at*((1-et)/(1+et)));
 orbitEls_0 = [a1; 0; 0.01; 0; 0; 0];
 [x0, NO0] = orbitEls2xv(orbitEls_0, mu);
 
-tspan = [0 2*pi*sqrt(42164^3/mu)];
+T = 2*pi*sqrt(42164^3/mu);
+tspan = [0 T];
 options = odeset('RelTol',1e-12,'AbsTol',1e-12,'Events',@atApoapsisEvent);
 
-% part a
+% part a %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 xt0_3a = x0 + [zeros(3,1); NO0*[0;dV1;0]];
 % [orbitEls_t0_3a] = rv2orbitEls(x0, mu); % check that orbit elements are as expected
 
@@ -71,35 +72,89 @@ xf_3a = xtf_3a + [zeros(3,1); NOf_3a*[0;dV2;0]];
 % [~, B] = GaussVariationalEqs(xtf_3a);
 % xf_3a = xtf_3a + B*[0; dV2; 0];
 
-% part b
-% xt0_3b = x0 + [zeros(3,1); NO0*[dV1*sind(1);dV1*cosd(1);0]];
-% [t_3b,x_3b] = ode45(@(t,x) rdot_rddot(x,mu), tspan, xt0_3b, options);
-% xtf_3b = x_3b(end,:)';
-% [~, NOf_3b] = rv2orbitEls(xtf_3b, mu); % get DCM
-% xf_3b = xtf_3b + [zeros(3,1); NOf_3b*[0;dV2;0]];
-% [orbitEls_f_3b] = rv2orbitEls(xf_3b, mu); % check that orbit elements are as expected
+% part b %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 [orbitEls_f_3b, xf_3b] = hohmanTransfer(x0, NO0, dV1, dV2, 1);
-
-% part d
 sensitivity = orbitEls_f_3b-orbitEls_f_3a; % change in orbit elements per degree error
+
+% part c %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 predicted_0p1 = orbitEls_f_3a + sensitivity*0.1;
 predicted_0p3 = orbitEls_f_3a - sensitivity*0.3;
 [orbitEls_f_0p1deg, posVel_f_0p1deg] = hohmanTransfer(x0, NO0, dV1, dV2, 0.1);
 [orbitEls_f_0p3deg, posVel_f_0p3deg] = hohmanTransfer(x0, NO0, dV1, dV2, -0.3);
+% Answers for part c:
 diff0p1 = orbitEls_f_0p1deg - predicted_0p1;
 diff0p3 = orbitEls_f_0p3deg - predicted_0p3;
-
+% Extra Investigation:
 pointErrors = linspace(-1,1,100);
 error = zeros(6,length(pointErrors));
-for i = 1:length(pointErrors)
-    [orbitEls_fi, ~] = hohmanTransfer(x0, NO0, dV1, dV2, pointErrors(i));
+for i = 1:length(pointErrors) % get error over -1:1 deg error to plot
+    [orbitEls_fi, ~] = hohmanTransfer(x0, NO0, dV1, dV2, pointErrors(i)); % simulate truth
     error(:,i) = orbitEls_fi - orbitEls_f_3a;
 end
 ylabels = ["a error", "e error"];
+figure
 for i=1:2
     subplot(2,1,i)
-    plot(pointErrors, error(i,:))
+    plot(pointErrors, error(i,:), 'LineWidth',2)
+    ylabel(ylabels(i))
+    xlabel("Pointing Error (deg)")
 end
+sgtitle("Actual Error in Final Orbit Due to Pointing Error")
+
+
+% part d %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+max_a = 30e-3; % [km/s^2]
+burnTime1 = dV1/max_a;
+burnTime2 = dV2/max_a;
+
+% orbit 1
+T1 = 2*pi*sqrt(a1^3/mu);
+options = odeset('RelTol',1e-12,'AbsTol',1e-12,'Events',@atPeriapsisEvent);
+[t_3d1,x_3d1] = ode45(@(t,x) rdot_rddot(x,mu), tspan, x0, options); % just make the tspan 1 period maybe
+xt0_3d1 = x_3d1(end,:)';
+[~, NO_t0_3d] = rv2orbitEls(xt0_3d1, mu);
+% transfer orbit
+% dV1des_N = NO_t0_3d*[0;dV1;0];
+dV1direction = NO_t0_3d*[0;1;0];
+options = odeset('RelTol',1e-12,'AbsTol',1e-12);
+[t_burn1,x_burn1] = ode45(@(t,x) rdot_rddot_continuousBurn(t, x, mu, max_a, dV1direction), [t_3d1(end) t_3d1(end)+burnTime1], xt0_3d1, options);
+options = odeset('RelTol',1e-12,'AbsTol',1e-12,'Events',@atApoapsisEvent);
+[t_3dt,x_3dt] = ode45(@(t,x) rdot_rddot(x,mu), [t_burn1(end) t_burn1(end)+T], x_burn1(end,:)', options);
+xtf_3dt = x_3dt(end,:)';
+[~, NO_tf_3d] = rv2orbitEls(xtf_3dt, mu); % check that orbit elements are as expected
+% orbit 2
+T2 = 2*pi*sqrt(a2^3/mu);
+% dV2des_N = NO_tf_3d*[0;dV2;0];
+dV2direction = NO_tf_3d*[0;1;0];
+options = odeset('RelTol',1e-12,'AbsTol',1e-12);
+[t_burn2,x_burn2] = ode45(@(t,x) rdot_rddot_continuousBurn(t, x, mu, max_a, dV2direction), [t_3dt(end) t_3dt(end)+burnTime2], xtf_3dt, options);
+% options = odeset('RelTol',1e-12,'AbsTol',1e-12,'Events',@atPeriapsisEvent);
+[t_3d2,x_3d2] = ode45(@(t,x) rdot_rddot(x,mu), [t_burn2(end) t_burn2(end)+T2], x_burn2(end,:)', options);
+xtf_3d2 = x_3d2(end,:)';
+[orbitEls_f_3d, ~] = rv2orbitEls(x_burn2(end,:)', mu); % check that orbit elements are as expected
+
+figure
+plot3(x_3d1(:,1), x_3d1(:,2), x_3d1(:,3), 'b','LineWidth', 1.5)
+hold on
+plot3(x_3dt(:,1),x_3dt(:,2),x_3dt(:,3),'c', 'LineWidth', 1.5)
+plot3(x_3d2(:,1),x_3d2(:,2),x_3d2(:,3),'g', 'LineWidth', 1.5)
+plot3(x_burn1(:,1),x_burn1(:,2),x_burn1(:,3), 'r*','LineWidth',1)
+plot3(x_burn2(:,1),x_burn2(:,2),x_burn2(:,3), 'r*','LineWidth',1)
+legend("o1","o2","o3","burn 1","burn 2", "Location",'best')
+grid on
+xlabel("X (km)")
+ylabel("Y (km)")
+zlabel("Z (km)")
+title("Finite Burn Trajectory (ECI)")
+
+figure
+for i=1:6
+    subplot(6,1,i)
+    plot(t_3d1, x_3d1(:,i))
+end
+
+finiteBurnErr = orbitEls_f_3d - orbitEls_f_3a;
 
 %% function
 function dxdt = proportionalControl(t, x, xd)
@@ -162,16 +217,33 @@ function [a, e, i, OMEGA, omega, M] = unpackState(x)
 end
 
 function [value,isterminal,direction] = atApoapsisEvent(t,x)
-%     value = y(6)-pi; %mean anomaly at 180 degrees hopefully?
-%     isterminal = 1;
-%     direction = 0;
-    [r_N, v_N] = unpackPosVel(x);
+    [r_N, v_N, r] = unpackPosVel(x);
     value = dot(r_N, v_N);
     isterminal = 1;
+    % mu = 3.986e5; % [km^3/s^2] 
+    % if t > 2*pi*sqrt(r^3/mu)
+    %     isterminal = 1;
+    % else
+    %     isterminal = 0;
+    % end
     direction = -1;
 end
 
+function [value,isterminal,direction] = atPeriapsisEvent(t,x)
+    [r_N, v_N, r] = unpackPosVel(x);
+    value = dot(r_N, v_N);
+    mu = 3.986e5; % [km^3/s^2] 
+    if t > 1/2*pi*sqrt(r^3/mu)
+        isterminal = 1;
+    else
+        isterminal = 0;
+    end
+    direction = 1;
+end
+
 function [orbitEls_f, posVel_f] = hohmanTransfer(x0, NO0, dV1, dV2, pointingError)
+% Simulate Hohman Transfer with full nonlinear equations, impulsive dVs,
+% and a 2D pointing error
 mu = 3.986e5;
 xt0 = x0 + [zeros(3,1); NO0*[-dV1*sind(pointingError);dV1*cosd(pointingError);0]];
 tspan = [0 2*pi*sqrt(42164^3/mu)];
@@ -181,4 +253,27 @@ xtf = x(end,:)';
 [~, NOf] = rv2orbitEls(xtf, mu); % get DCM
 posVel_f = xtf + [zeros(3,1); NOf*[0;dV2;0]];
 [orbitEls_f] = rv2orbitEls(posVel_f, mu); % check that orbit elements are as expected
+end
+
+
+% function for ode45 to integrate
+function dXdt = rdot_rddot_continuousBurn(t, X, mu, max_a, dVdirection)
+        
+    r = X(1:3); % extract position from state vector
+    v = X(4:6); % extract velocity from state vector
+    dr = v; % inertial time derivative of position is simply velocity
+    dv = -mu/(norm(r)^3)*r; % inertial time derivative of velocity from equation 2.22
+    
+    % max_a = 30e-3; % [km/s^2]
+    % dVdes = norm(dVdes_N);
+    % dVdirection = dVdes_N/dVdes;
+    % burnTime = dVdes/max_a;
+    % if t <= burnTime
+    %     dXdt = [dr; dv + max_a*dVdirection]; % assign back to state vector derivative
+    % else
+    %     dXdt = [dr; dv]; % assign back to state vector derivative
+    % end
+    
+    dXdt = [dr; dv + max_a*dVdirection]; % assign back to state vector derivative
+
 end
