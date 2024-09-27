@@ -11,11 +11,15 @@ tspan = 0:update_period:TOF;
 t_hist = NaN(1);
 x_hist = NaN(1,6);
 xi = x0_N;
-for i = 1:length(tspan)-1
+% for i = 1:length(tspan)-1
+t0 = 0;
+while t0 < TOF
+    tnext = min(t0+update_period, TOF);
     r_N = xi(1:3);
     % r = norm(r_N);
     v_N = xi(4:6);
-    tgo = TOF-tspan(i);
+    % tgo = TOF-tspan(i);
+    tgo = TOF-t0;
     
     using_long_transfer_angle = 0;
     [vr_N, ~, ~] = Lamberts(mu, r_N, rf_N, using_long_transfer_angle, tgo);
@@ -32,18 +36,25 @@ for i = 1:length(tspan)-1
     options = odeset('RelTol',1e-12,'AbsTol',1e-12);
     % [t_hist((i-1)*dataPointsInPeriod+1:i*dataPointsInPeriod),x_hist((i-1)*dataPointsInPeriod+1:i*dataPointsInPeriod,:)] = ode45(@(t,x) rdot_rddot(x, mu, at_N), linspace(tspan(i),tspan(i+1),dataPointsInPeriod), xi, options);
     burnTime = min(vg/at,update_period);
-    if burnTime > 1e-6
-        [t,x] = ode45(@(t,x) rdot_rddot(x, mu, at_N), [tspan(i) tspan(i)+burnTime], xi, options);
+    if burnTime > 1e-9
+        % [t,x] = ode45(@(t,x) rdot_rddot(x, mu, at_N), [tspan(i) tspan(i)+burnTime], xi, options);
+        [t,x] = ode45(@(t,x) rdot_rddot(x, mu, at_N), [t0 t0+burnTime], xi, options);
         t_hist(end:end+length(t)-1,1) = t;
         x_hist(end:end+length(t)-1,1:6) = x;
     end
     if burnTime < update_period
-        [t,x] = ode45(@(t,x) rdot_rddot(x, mu, zeros(3,1)), [t_hist(end) tspan(i+1)], x(end,:), options);
+        % [t,x] = ode45(@(t,x) rdot_rddot(x, mu, zeros(3,1)), [t_hist(end) tspan(i+1)], x(end,:), options);
+        [t,x] = ode45(@(t,x) rdot_rddot(x, mu, zeros(3,1)), [t_hist(end) tnext], x(end,:), options);
         t_hist(end:end+length(t)-1,1) = t;
         x_hist(end:end+length(t)-1,1:6) = x;
     end
     xi = x_hist(end,:)';
+    t0 = tnext;
 end
+
+% if (TOF - t_hist(end)) > 1e-6
+% 
+% end
 
 end
 

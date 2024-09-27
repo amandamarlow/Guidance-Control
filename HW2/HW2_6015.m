@@ -54,6 +54,23 @@ for i = 1:3
     sgtitle(strcat("Pro Nav: ","$\theta_{HE}$ = ", num2str(HE0(i)), "$^{\circ}$ $n_T$ = ", num2str(nt(i)), "$\frac{ft}{s^2}$"), "Interpreter", "Latex")
 end
 
+% Part b
+tgo_error = mvnrnd(0,0.3,100);
+missDist = zeros(length(tgo_error),1);
+figure
+for i = 1:length(tgo_error)
+    [t,x] = simMissile(R0, Vm, Vt, 4, 30, 3*32, 1, tgo_error(i));
+    missDist(i) = x(end,1);
+end
+[t,x] = simMissile(R0, Vm, Vt, 4, 30, 3*32, 1);
+
+figure
+scatter(tgo_error, missDist)
+yline(0,'k--')
+xlabel("Time To Go Error (s)")
+ylabel("Miss Distance (m)")
+title("Monte Carlo Runs with Error in Time to Go")
+
 %% Problem 2 - Lambert guidance
 r0 = 6578;
 r0_N = [r0;0;0];
@@ -79,6 +96,14 @@ scatter(x_hist(:,1),x_hist(:,2), '.')
 hold on
 scatter(rf_N(1),rf_N(2),'*', 'LineWidth',4)
 axis equal
+grid on
+
+% figure
+% plot3(x_hist(:,1),x_hist(:,2),x_hist(:,3), '.')
+% hold on
+% scatter3(rf_N(1),rf_N(2),rf_N(3),'*', 'LineWidth',4)
+% axis equal
+% grid on
 
 figure
 for i=1:6

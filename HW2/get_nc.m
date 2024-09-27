@@ -13,7 +13,13 @@ for i = 1:length(tgo)
     else
         ZEM_perp = y + ydot*tgo(i);
     end
-    nc(i) = N*ZEM_perp/tgo(i)^2;
+
+    if tgo(i) < 0.1
+        nc(i) = 0;
+    else
+        nc(i) = N*ZEM_perp/tgo(i)^2;
+    end
+
 end
 end
 

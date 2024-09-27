@@ -83,8 +83,8 @@ end
 function [alpha, beta] = getAlphaBeta(c, s, a, using_long_TOF, using_long_transfer_angle)
     alpha = 2*asin(sqrt(s/2/a));
     beta = 2*asin(sqrt((s-c)/2/a));
-    alpha = real(alpha);
-    beta = real(beta);
+    % alpha = real(alpha);
+    % beta = real(beta);
     if using_long_TOF
         alpha = 2*pi-alpha;
     end
