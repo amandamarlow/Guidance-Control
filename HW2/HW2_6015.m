@@ -8,68 +8,68 @@ close all
 
 addpath("C:\Users\marlo\MATLAB Drive\6015")
 
-%% Problem 1
-
-Vm = 3000; % [ft/s]
-Vt = 1000; % [ft/s]
-R0 = 40000; % [ft]
-% [t,x] = simMissile(R0, Vm, Vt, N, HE0, nt, pltTitle)
-% HE0 = 30; % [deg]
-% nt = 0;
-% N = 3;
-HE0 = [30, 0, 30];
-nt = [0, 3, 3]*32; % ft/s^2
-% for N = 3:5
-%     for i = 1:3
-%         pltTitle = strcat("N'=", num2str(N), " $\theta_{HE}$=", num2str(HE0(i)), "$^{\circ}$ $n_T$=", num2str(nt(i)), "$\frac{ft}{s^2}$");
-%         [t,x] = simMissile(R0, Vm, Vt, N, HE0(i), nt(i), pltTitle);
-%     end
-% end
-
-% aug = 0;
+% %% Problem 1
+% 
+% Vm = 3000; % [ft/s]
+% Vt = 1000; % [ft/s]
+% R0 = 40000; % [ft]
+% % [t,x] = simMissile(R0, Vm, Vt, N, HE0, nt, pltTitle)
+% % HE0 = 30; % [deg]
+% % nt = 0;
+% % N = 3;
+% HE0 = [30, 0, 30];
+% nt = [0, 3, 3]*32; % ft/s^2
+% % for N = 3:5
+% %     for i = 1:3
+% %         pltTitle = strcat("N'=", num2str(N), " $\theta_{HE}$=", num2str(HE0(i)), "$^{\circ}$ $n_T$=", num2str(nt(i)), "$\frac{ft}{s^2}$");
+% %         [t,x] = simMissile(R0, Vm, Vt, N, HE0(i), nt(i), pltTitle);
+% %     end
+% % end
+% 
+% % aug = 0;
+% % for i = 1:3
+% %     figure
+% %     for N = 3:5
+% %         [t,x,nc] = simMissile(R0, Vm, Vt, N, HE0(i), nt(i), aug);
+% %     end
+% %     sgtitle(strcat("Pro Nav: ","$\theta_{HE}$ = ", num2str(HE0(i)), "$^{\circ}$ $n_T$ = ", num2str(nt(i)), "$\frac{ft}{s^2}$"), "Interpreter", "Latex")
+% % end
+% % aug = 1;
+% % for i = 1:3
+% %     figure
+% %     for N = 3:5
+% %         [t,x,nc] = simMissile(R0, Vm, Vt, N, HE0(i), nt(i), aug);
+% %     end
+% %     sgtitle(strcat("Augmented Pro Nav: ","$\theta_{HE}$ = ", num2str(HE0(i)), "$^{\circ}$ $n_T$ = ", num2str(nt(i)), "$\frac{ft}{s^2}$"), "Interpreter", "Latex")
+% % end
+% 
+% aug = [0,1];
 % for i = 1:3
 %     figure
-%     for N = 3:5
-%         [t,x,nc] = simMissile(R0, Vm, Vt, N, HE0(i), nt(i), aug);
+%     for j = 1:2
+%         for N = 3:5
+%             [t,x] = simMissile(R0, Vm, Vt, N, HE0(i), nt(i), aug(j));
+%         end
 %     end
 %     sgtitle(strcat("Pro Nav: ","$\theta_{HE}$ = ", num2str(HE0(i)), "$^{\circ}$ $n_T$ = ", num2str(nt(i)), "$\frac{ft}{s^2}$"), "Interpreter", "Latex")
 % end
-% aug = 1;
-% for i = 1:3
-%     figure
-%     for N = 3:5
-%         [t,x,nc] = simMissile(R0, Vm, Vt, N, HE0(i), nt(i), aug);
-%     end
-%     sgtitle(strcat("Augmented Pro Nav: ","$\theta_{HE}$ = ", num2str(HE0(i)), "$^{\circ}$ $n_T$ = ", num2str(nt(i)), "$\frac{ft}{s^2}$"), "Interpreter", "Latex")
+% 
+% % Part b
+% tgo_error = mvnrnd(0,0.3,100);
+% missDist = zeros(length(tgo_error),1);
+% figure
+% for i = 1:length(tgo_error)
+%     [t,x] = simMissile(R0, Vm, Vt, 4, 30, 3*32, 1, tgo_error(i));
+%     missDist(i) = x(end,1);
 % end
-
-aug = [0,1];
-for i = 1:3
-    figure
-    for j = 1:2
-        for N = 3:5
-            [t,x] = simMissile(R0, Vm, Vt, N, HE0(i), nt(i), aug(j));
-        end
-    end
-    sgtitle(strcat("Pro Nav: ","$\theta_{HE}$ = ", num2str(HE0(i)), "$^{\circ}$ $n_T$ = ", num2str(nt(i)), "$\frac{ft}{s^2}$"), "Interpreter", "Latex")
-end
-
-% Part b
-tgo_error = mvnrnd(0,0.3,100);
-missDist = zeros(length(tgo_error),1);
-figure
-for i = 1:length(tgo_error)
-    [t,x] = simMissile(R0, Vm, Vt, 4, 30, 3*32, 1, tgo_error(i));
-    missDist(i) = x(end,1);
-end
-[t,x] = simMissile(R0, Vm, Vt, 4, 30, 3*32, 1);
-
-figure
-scatter(tgo_error, missDist)
-yline(0,'k--')
-xlabel("Time To Go Error (s)")
-ylabel("Miss Distance (m)")
-title("Monte Carlo Runs with Error in Time to Go")
+% [t,x] = simMissile(R0, Vm, Vt, 4, 30, 3*32, 1);
+% 
+% figure
+% scatter(tgo_error, missDist)
+% yline(0,'k--')
+% xlabel("Time To Go Error (s)")
+% ylabel("Miss Distance (m)")
+% title("Monte Carlo Runs with Error in Time to Go")
 
 %% Problem 2 - Lambert guidance
 r0 = 6578;
@@ -87,10 +87,13 @@ v0 = sqrt(mu/r0);
 v0_N = [0;v0;0];
 x0_N = [r0_N; v0_N];
 at = 30/1000; % km/s^2
-[t_hist, x_hist] = LambertGuidance(x0_N, rf_N, TOF, at, mu);
+[t_hist, x_hist, at_hist] = LambertGuidance(x0_N, rf_N, TOF, at, mu);
 error_N = x_hist(end,1:3)'-rf_N;
 error = norm(error_N);
-%% plotting
+
+burnTime_tot = trapz(t_hist,double(at_hist>0));
+
+% plotting
 figure
 scatter(x_hist(:,1),x_hist(:,2), '.')
 hold on
@@ -105,8 +108,28 @@ grid on
 % axis equal
 % grid on
 
+% figure
+% for i=1:6
+%     subplot(6,1,i)
+%     plot(t_hist, x_hist(:,i))
+% end
+
+% Part C
+crossProdSteer = 1;
+[t_hist_c, x_hist_c, at_hist_c] = LambertGuidance(x0_N, rf_N, TOF, at, mu, crossProdSteer);
+error_N_C = x_hist_c(end,1:3)'-rf_N;
+error_C = norm(error_N_C);
+
+% plotting
 figure
-for i=1:6
-    subplot(6,1,i)
-    plot(t_hist, x_hist(:,i))
-end
+scatter(x_hist_c(:,1),x_hist_c(:,2), '.')
+hold on
+scatter(rf_N(1),rf_N(2),'*', 'LineWidth',4)
+axis equal
+grid on
+
+figure
+scatter(t_hist,at_hist)
+hold on
+scatter(t_hist_c,at_hist_c, '.')
+legend("Lambert", "Cross Product")
