@@ -4,7 +4,8 @@ function [dKdt] = K_ODE(t, K, A, B, Q, R)
 
 K = reshape(K,5,5);
 
-dKdt = -K*A+K*B/R*B'*K-Q-A'*K;
-dKdt = reshpape(dKdt,[],1);
+% dKdt = -K*A + K*B/R*B'*K - Q - A'*K;
+dKdt = -K*A + K*B*inv(R)*B'*K - Q - A'*K;
+dKdt = reshape(dKdt,[],1);
 end
 
