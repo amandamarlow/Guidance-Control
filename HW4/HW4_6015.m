@@ -17,10 +17,10 @@ tf = 23; % burnout time
 % B_N = NO_t0*B_O;
 
 a = 10000; % km
-i = 0; 
+inc = 0; 
 e = 0.0001; % km
 omega = 35*pi/180; % deg
-targetOrbitEls = [a; e; i; 0; omega; 0];
+targetOrbitEls = [a; e; inc; 0; omega; 0];
 
 % [xf, NO_f] = orbitEls2xv(orbitEls, mu);
 % [orbitEls0, NO_0] = rv2orbitEls(x0, mu);
@@ -29,7 +29,7 @@ rp = a*(1-e);
 vp = sqrt(2*mu/rp - mu/a);
 rp_O = [rp; 0; 0];
 vp_O = [0; vp; 0];
-[~, NO_periapsis] = orbitEls2xv([a; e; i; 0; omega; 0], mu);
+[~, NO_periapsis] = orbitEls2xv([a; e; inc; 0; omega; 0], mu);
 rp_N = NO_periapsis*rp_O;
 vp_N = NO_periapsis*vp_O;
 rp_hat = rp_N/rp;
@@ -108,6 +108,7 @@ A_hist = A;
 B_hist = B;
 t_hist = 0;
 E_hist = [];
+x_hist = x0;
 while tf >= 2
     lambdaAug = [B; A; tf];
 
@@ -137,7 +138,8 @@ while tf >= 2
         lambdaAug = lambdaAug_new;
         % if norm(E_new) < error_tol
         if failed
-            fprintf("line search failed to improve error in %f iterations\n", max_line_search_iterations)
+            % fprintf("line search failed to improve error in %f iterations\n", max_line_search_iterations)
+            fprintf("line search failed to improve error on the %d newton-raphson iteration\n", k)
             disp(norm(E_new))
             disp(Wnorm(E_new))
             break
@@ -163,6 +165,7 @@ while tf >= 2
     B_hist(:,end+1) = B;
     t_hist(:,end+1) = t_hist(end) + guidance_updates;
     E_hist(:,end+1) = E;
+    x_hist(:,end+1) = x0;
     
 end
 A_hist(:,end+1) = A;
@@ -174,13 +177,22 @@ E_hist(:,end+1) = ode45wrapper(x0, lambdaAug, maxThrust, targetOrbitEls, mu);
 
 [~,x] = ode45(@(t,x) bilinearTangent_dynamics(t, x, mu, A, B, maxThrust), [0 tf], x0, options);
 xf = x(end,:)';
+x_hist(:,end+1) = xf;
+orbitEls_hist = NaN(6,length(x_hist));
+for i = 1:length(x_hist)
+    [orbitEls_hist(:,i), ~] = rv2orbitEls(x_hist(:,i), mu);
+end
 fprintf("Final Position: \n")
 disp(xf)
 [orbitEls_tf, NO_tf] = rv2orbitEls(xf, mu);
 orbitEls_error = orbitEls_tf - targetOrbitEls;
 orbitEls_error = orbitEls_error([1,2,3,5]);
 fprintf("Final Orbit Element Errors: \n")
-disp(orbitEls_error)
+% disp(orbitEls_error)
+fprintf("a error: %f km\n", orbitEls_error(1))
+fprintf("e error: %f\n", orbitEls_error(2))
+fprintf("i error: %f deg\n", orbitEls_error(3)*180/pi)
+fprintf("omega error: %f deg\n", orbitEls_error(4)*180/pi)
 
 figure
 subplot(2,1,1)
@@ -200,6 +212,18 @@ plot(t_hist, E_hist, 'LineWidth',1)
 legend("$\epsilon_1$", "$\epsilon_2$", "$\epsilon_3$", "$\epsilon_4$", "$\epsilon_5$", "$\epsilon_6$", "$\epsilon_7$", 'Interpreter', 'latex', 'Location','southwest')
 grid on
 
+figure
+ylabels = ["a","e","i","W","w","ta"];
+desOrbitEls = [a; e; inc; NaN; omega; NaN];
+for i=1:6
+    subplot(6,1,i)
+    plot(t_hist,orbitEls_hist(i,:),"LineWidth",2)
+    hold on
+    ylabel(ylabels(i))
+    yline(desOrbitEls(i), 'r--')
+end
+sgtitle("Orbit Elements vs Time")
+xlabel("Time [s]")
 %%
 
 function[J] = jacobian(fun, lambdaAug, d_lambdaAug, E0)
