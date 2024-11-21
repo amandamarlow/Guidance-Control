@@ -95,9 +95,9 @@ d_lambdaAug = [0.3, 1.3895e-7, 7.90604e-8, 0.184207, 2.32995e-6, 7.54312e-7, 3.9
 %% Implement Predictor Corrector
 
 options = odeset('RelTol',1e-12,'AbsTol',1e-12);
-guidance_updates = 1; % s
+guidance_updates = 0.1; % s
 % guidance_updates = 0.5; % s
-max_newton_iterations = 10;
+max_newton_iterations = 100;
 max_line_search_iterations = 100;
 % error_tol = 1;
 % error_tol = 0.5;
@@ -109,7 +109,7 @@ B_hist = B;
 t_hist = 0;
 E_hist = [];
 x_hist = x0;
-while tf >= 2
+while tf >= 0.5
     lambdaAug = [B; A; tf];
 
     for k = 1:max_newton_iterations
@@ -240,7 +240,7 @@ function[Wnorm] = weightedNorm(vec, x0, tf)
     if size(vec,2) >1
         vec = vec';
     end
-    W = 10*[1/norm(x0(4:6)).*ones(1,3), 1/norm(x0(1:3)).*ones(1,3), 1/tf];
+    W = 100*[1/norm(x0(4:6)).*ones(1,3), 1/norm(x0(1:3)).*ones(1,3), 1/tf];
     W = diag(W);
     Wnorm = sqrt(vec'*W*vec);
 end
