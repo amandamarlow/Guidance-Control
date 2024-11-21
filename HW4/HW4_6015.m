@@ -3,9 +3,9 @@ clear
 clc
 close all
 addpath("C:\Users\marlo\MATLAB Drive\6015")
+
 % constants
 mu = 3.986004415e5;
-
 
 x0 = [8276; 5612; 5; -3.142; 4.672; 0];
 % initial guesses
@@ -93,16 +93,22 @@ legend("$\dot{\lambda_1}$", "$\dot{\lambda_2}$", "$\dot{\lambda_3}$", "$\lambda_
 d_lambdaAug = [0.3, 1.3895e-7, 7.90604e-8, 0.184207, 2.32995e-6, 7.54312e-7, 3.90694e-5];
 
 %% Implement Predictor Corrector
+
 options = odeset('RelTol',1e-12,'AbsTol',1e-12);
 guidance_updates = 1; % s
-% lambdaAug = [B; A; tf];
+% guidance_updates = 0.5; % s
 max_newton_iterations = 10;
 max_line_search_iterations = 100;
 % error_tol = 1;
-error_tol = 0.01;
+% error_tol = 0.5;
+error_tol = 0.1;
 storeE = [];
 Wnorm = @(input) weightedNorm(input, x0, tf);
-while tf >= 5
+A_hist = A;
+B_hist = B;
+t_hist = 0;
+E_hist = [];
+while tf >= 2
     lambdaAug = [B; A; tf];
 
     for k = 1:max_newton_iterations
@@ -127,11 +133,13 @@ while tf >= 5
             gamma = gamma*0.5;
         end
 
-        storeE(:,end+1) = E_new;
+        % storeE(:,end+1) = E_new;
         lambdaAug = lambdaAug_new;
         % if norm(E_new) < error_tol
         if failed
             fprintf("line search failed to improve error in %f iterations\n", max_line_search_iterations)
+            disp(norm(E_new))
+            disp(Wnorm(E_new))
             break
         elseif Wnorm(E_new) < error_tol
             fprintf("Converged! E final: \n")
@@ -150,7 +158,20 @@ while tf >= 5
     B = lambdaAug(1:3);
     [~,x] = ode45(@(t,x) bilinearTangent_dynamics(t, x, mu, A, B, maxThrust), [0 guidance_updates], x0, options);
     x0 = x(end,:)';
+
+    A_hist(:,end+1) = A;
+    B_hist(:,end+1) = B;
+    t_hist(:,end+1) = t_hist(end) + guidance_updates;
+    E_hist(:,end+1) = E;
+    
 end
+A_hist(:,end+1) = A;
+B_hist(:,end+1) = B;
+t_hist(:,end+1) = t_hist(end) + tf;
+E_hist(:,end+1) = E_new;
+lambdaAug(end) = tf;
+E_hist(:,end+1) = ode45wrapper(x0, lambdaAug, maxThrust, targetOrbitEls, mu);
+
 [~,x] = ode45(@(t,x) bilinearTangent_dynamics(t, x, mu, A, B, maxThrust), [0 tf], x0, options);
 xf = x(end,:)';
 fprintf("Final Position: \n")
@@ -160,6 +181,25 @@ orbitEls_error = orbitEls_tf - targetOrbitEls;
 orbitEls_error = orbitEls_error([1,2,3,5]);
 fprintf("Final Orbit Element Errors: \n")
 disp(orbitEls_error)
+
+figure
+subplot(2,1,1)
+plot(t_hist,A_hist, "LineWidth",linewidth)
+ylabel("A")
+xlabel("time (s)")
+legend("$A_1$","$A_2$","$A_3$", 'interpreter', 'latex')
+subplot(2,1,2)
+plot(t_hist,B_hist, "LineWidth",linewidth)
+ylabel("B")
+xlabel("time (s)")
+legend("$B_1$","$B_2$","$B_3$", 'interpreter', 'latex')
+grid on
+
+figure
+plot(t_hist, E_hist, 'LineWidth',1)
+legend("$\epsilon_1$", "$\epsilon_2$", "$\epsilon_3$", "$\epsilon_4$", "$\epsilon_5$", "$\epsilon_6$", "$\epsilon_7$", 'Interpreter', 'latex', 'Location','southwest')
+grid on
+
 %%
 
 function[J] = jacobian(fun, lambdaAug, d_lambdaAug, E0)
