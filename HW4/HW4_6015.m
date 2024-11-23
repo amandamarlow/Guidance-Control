@@ -120,7 +120,7 @@ E_hist = [];
 x_hist = x0;
 % lambdaAug = [B; A; tf_est];
 % for oneIter = 1
-while t_go >= 1
+while t_go >= 2
     lambdaAug = [B; A; t_go];
     tstep = min(guidance_updates, t_go);
 
@@ -194,20 +194,11 @@ xf = x_out(end,:)';
 x_hist(:,end+1) = xf;
 orbitEls_hist = NaN(6,size(x_hist, 2));
 for i = 1:size(x_hist,2)
-    [orbitEls_hist(:,i), ~] = rv2orbitEls(x_hist(:,i), mu);
+    [orbitEls_hist(:,i), ~] = rv2orbitEls(x_hist(:,i), mu, 1);
 end
 fprintf("Final Position: \n")
 disp(xf)
 printOrbitError(xf, mu, targetOrbitEls)
-% [orbitEls_tf, NO_tf] = rv2orbitEls(xf, mu);
-% orbitEls_error = orbitEls_tf - targetOrbitEls;
-% orbitEls_error = orbitEls_error([1,2,3,5]);
-% fprintf("Final Orbit Element Errors: \n")
-% % disp(orbitEls_error)
-% fprintf("a error: %f km\n", orbitEls_error(1))
-% fprintf("e error: %f\n", orbitEls_error(2))
-% fprintf("i error: %f deg\n", orbitEls_error(3)*180/pi)
-% fprintf("omega error: %f deg\n", orbitEls_error(4)*180/pi)
 
 figure
 subplot(2,1,1)

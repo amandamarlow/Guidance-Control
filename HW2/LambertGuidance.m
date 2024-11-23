@@ -6,11 +6,12 @@ update_period = 60; % s
 tol = 1e-12; % km/s
 tspan = 0:update_period:TOF;
 rf = norm(rf_N);
-G = 3*mu/rf^5*(rf_N*rf_N') - mu/rf^3*eye(3);
+% G = 3*mu/rf^5*(rf_N*rf_N') - mu/rf^3*eye(3); % make this at the end of the burn
 t_hist = NaN(1);
 x_hist = NaN(1,6);
 at_hist = NaN(1);
 xi = x0_N;
+options = odeset('RelTol',1e-12,'AbsTol',1e-12);
 % for i = 1:length(tspan)-1
 t0 = 0;
 while t0 < TOF
@@ -31,10 +32,19 @@ while t0 < TOF
     %     at_N = zeros(3,1);
     % else
         at_N = at*vghat;
+        burnTime_totDes = vg/at;
         if exist("crossProdSteer", "var")
             if crossProdSteer == 1
-                % G = 3*mu/r^5*(r_N*r_N') - mu/r^3*eye(3);
-                Q = -1/(TOF-t0)*(eye(3)+(TOF-t0)^2/2*G);
+                if burnTime_totDes > 1e-9
+                    [~,x_nom_N] = ode45(@(t,x) rdot_rddot(x, mu, zeros(3,1)), [t0 t0+burnTime_totDes], [r_N;vr_N], options);
+                    r_nom_N = x_nom_N(end,1:3)';
+                    r_nom = norm(r_nom_N);
+                    G = 3*mu/r_nom^5*(r_nom_N*r_nom_N') - mu/r_nom^3*eye(3);
+                else
+                    G = 3*mu/r^5*(r_N*r_N') - mu/r^3*eye(3);
+                end
+                % Q = -1/(TOF-t0)*(eye(3)+(TOF-t0)^2/2*G);
+                Q = -1/(burnTime_totDes)*(eye(3)+(burnTime_totDes)^2/2*G);
                 b_N = -Q*vg_N;
                 b = norm(b_N);
                 q = -dot(vghat,b_N) + sqrt(dot(vghat,b_N)^2 - b^2 + at^2);
@@ -44,7 +54,6 @@ while t0 < TOF
     % end
 
     
-    options = odeset('RelTol',1e-12,'AbsTol',1e-12);
     burnTime = min(vg/at,update_period);
     % burnTime = tnext-t0;
     if burnTime > 1e-9

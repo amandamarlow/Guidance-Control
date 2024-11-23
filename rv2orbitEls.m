@@ -1,4 +1,4 @@
-function [orbitEls, NO] = rv2orbitEls(posVel, mu)
+function [orbitEls, NO] = rv2orbitEls(posVel, mu, using_trueAnomaly)
 %RV2ORBITELS Summary of this function goes here
 %   Detailed explanation goes here
 
@@ -34,9 +34,18 @@ if dot(r_N,v_N) <  0
    nu = -nu; 
 end
 nu = real(nu);
-M = atan2(-sqrt(1-e^2)*sin(nu),-e-cos(nu)) + pi-e*sqrt(1-e^2)*sin(nu)/(1+e*cos(nu));
 
-orbitEls = [a;e;i;OMEGA;omega;M];
+if exist("using_trueAnomaly","var")
+    if using_trueAnomaly == 1
+        orbitEls = [a;e;i;OMEGA;omega;nu];
+    else
+        M = atan2(-sqrt(1-e^2)*sin(nu),-e-cos(nu)) + pi-e*sqrt(1-e^2)*sin(nu)/(1+e*cos(nu));
+        orbitEls = [a;e;i;OMEGA;omega;M];
+    end
+else
+    M = atan2(-sqrt(1-e^2)*sin(nu),-e-cos(nu)) + pi-e*sqrt(1-e^2)*sin(nu)/(1+e*cos(nu));
+    orbitEls = [a;e;i;OMEGA;omega;M];
+end
 
 theta = nu + omega;
 ON = R3(theta)*R1(i)*R3(OMEGA);
