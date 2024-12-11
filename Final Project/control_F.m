@@ -34,5 +34,9 @@ function [F, G] = control_F(r, v, L_targ, A_targ, Fmax, k, epsilon, mu)
     else
         F = Fmax*G/norm(G);
     end
+
+    if norm(F) < 2e-4
+        F = zeros(3,1);
+    end
 end
 
