@@ -3,7 +3,7 @@ using OrdinaryDiffEq, LinearAlgebra, Plots, Statistics, Distributions
 # gr()
 # plotlyjs()
 
-function rv2orbitEls(posVel::Vector{Float64}, mu::Float64, using_trueAnomaly::Int = 0)
+function rv2orbitEls(posVel, mu::Float64, using_trueAnomaly::Int = 0)
     # Canonical basis vectors
     X_N = [1.0, 0.0, 0.0]
     Y_N = [0.0, 1.0, 0.0]
@@ -88,12 +88,13 @@ function control_F(r::Array{Float64, 2}, v::Array{Float64, 2}, L_targ::Array{Flo
         delta_L = L - L_targ
         delta_A = A - A_targ
         G = -(cross(k * delta_L, r[:, i]) + cross(L, delta_A) + cross(cross(delta_A, v[:, i]), r[:, i]))
-        # if norm(G) < epsilon * Fmax
-        #     # F[:, i] = G / epsilon
-        #     F[:, i] = zeros(3,1)
-        # else
+        if norm(G) < epsilon * Fmax
+            # F[:, i] = G / epsilon
+            # F[:, i] = zeros(3,1)
+            F[:, i] = Fmax * G / (epsilon * Fmax)
+        else
             F[:, i] = Fmax * G / norm(G)
-        # end
+        end
     end
     return F+Fpert*ones(3,1)
 end
@@ -184,8 +185,10 @@ function terminate_condition(u,t,integrator, L_targ, A_targ, Fmax, k, epsilon, m
     A = cross(v, L) - mu * r / norm(r)
     delta_L = L - L_targ
     delta_A = A - A_targ
-    G = -(cross(k * delta_L, r) + cross(L, delta_A) + cross(cross(delta_A, v), r))
-    return norm(G) <= epsilon*Fmax
+    # G = -(cross(k * delta_L, r) + cross(L, delta_A) + cross(cross(delta_A, v), r))
+    # return norm(G) <= epsilon*Fmax
+    return (norm(delta_L) < 1.6e-2) & (norm(delta_A) < 0.9e-3)
+    # return (norm(delta_L) < 1.6e-2) & (norm(delta_A) < 1e-3)
 end
 
 function column_norms(A)
@@ -196,7 +199,7 @@ function column_norms(A)
     return norms
 end
 
-function plotOrbitEls(x,orbitEls)
+function plotOrbitEls(t,orbitEls, desOrbitEls)
     # data = []
     p = plot(layout=(6,1))
     plot_list = []
@@ -204,12 +207,16 @@ function plotOrbitEls(x,orbitEls)
     for i in 1:6
       # Add each plot to the subplot grid
     #   plot_list[i] = plot(x, orbitEls[i,:], linewidth=2, label="Data $i")
-        p = scatter(x, orbitEls[i,:],legend=false)
+        p = plot(t, orbitEls[i,:],label=orbitLabels[i])
+        plot!(t, [desOrbitEls[i] for _ in Fdist], LineStyle=:dot)
+        # ylabel!(orbitLabels[i])
         push!(plot_list,p)
     end
     p=plot(plot_list..., layout=(6,1), size=(600,750))
+    xlabel!("Time (hours)")
     # Display the plot
     display(p)
+    return p
 end
 
 function main()
@@ -231,13 +238,14 @@ function main()
     L_targ = [0.0, 0.0, 2.56612389857378]
     A_targ = [0.0, 0.0, 0.0]
     orbitEls_targ = [42000/DU; 0; 0; 0; 0; 0];
+    orbitEls_targ_physical = [42000; 0; 0; 0; 0; 0];
 
     # Tuning parameters
     epsilon = 0.00001
     k = 2.0
 
     # Time span and solve
-    tmax = 19 / TU * 3600.0
+    tmax = 20 / TU * 3600.0
     # tmax = 18.7867/TU*60^2;
     tspan = (0.0, tmax)  # Canonical time
     params = (L_targ, A_targ, Fmax, k, epsilon, mu_canonical, 0.0)
@@ -245,10 +253,11 @@ function main()
     prob = ODEProblem((du, u, p, t) -> dynamics!(du, u, L_targ, A_targ, Fmax, k, epsilon, mu_canonical, Fpert, t), x0, tspan)
     terminate_affect!(integrator) = terminate!(integrator)
     terminate_cb = DiscreteCallback((u,t,integrator)->terminate_condition(u,t,integrator, L_targ, A_targ, Fmax, k, epsilon, mu_canonical),terminate_affect!)
-    sol = solve(prob, Tsit5(), reltol=1e-10, abstol=1e-10, saveat=tmax/1000.0, callback=terminate_cb)
+    # sol = solve(prob, Tsit5(), reltol=1e-10, abstol=1e-10, saveat=tmax/1000.0, callback=terminate_cb, maxiters=1e7)
     # sol = solve(prob, Tsit5(), reltol=1e-10, abstol=1e-10,saveat=tmax/1000.0)
     # sol = solve(prob, Vern9(), saveat=tmsax/1000.0)
-    # sol = solve(prob, Vern7(), reltol=1e-10, abstol=1e-10, saveat=tmax/1000.0, callback=terminate_cb)
+    sol = solve(prob, Vern7(), reltol=1e-10, abstol=1e-10, saveat=tmax/1000.0, callback=terminate_cb, maxiters=1e7)
+    # sol = solve(prob, AutoVern7(Rodas5()), saveat=tmax/1000.0, callback=terminate_cb, maxiters=1e7)
 
     # Compute control forces
     r_sol = hcat([sol.u[i][1:3] for i in 1:length(sol)]...)
@@ -290,10 +299,45 @@ function main()
     xlabel!("time (hours)")
     ylabel!("Control Force (m/s^2)")
     display(control_plot)
+    
+
+    # zoomed in control plot
+    mask = findall(time_hours.>18.5)
+    zoomed_control_plot = plot(time_hours[time_hours.>18.5], F_mps2[1, mask], label="Fx", linewidth=2, plotdensity = 100)
+    plot!(time_hours[time_hours.>18.5], F_mps2[2, mask], label="Fy", linewidth=2, plotdensity = 100)
+    plot!(time_hours[time_hours.>18.5], F_mps2[3, mask], label="Fz", linewidth=2, plotdensity = 100)
+    xlabel!("time (hours)")
+    ylabel!("Control Force (m/s^2)")
+    display(zoomed_control_plot)
+
+    x_physical = vcat(r_physical, v_physical)
+    orbitEls_time = zeros(size(x_physical))
+    for i in 1:size(x_physical,2)
+        orbitEls_time[:,i],_ = rv2orbitEls(x_physical[:,i], mu, 1);
+    end
+    println(size(orbitEls_time))
+    println(orbitEls_time[:,1])
+    # desOrbitEls = [orbitEls_targ_physical[1:3]; NaN.*ones(3,1)];
+    # orbitEls_time = plotOrbitEls(time_hours, orbitEls, desOrbitEls)
+    orbitLabels = ["a (km)", "e", "i (deg)", "\u03A9 (deg)", "\u03C9 (deg)", "\u03BD (deg)"]
+    plot_list = []
+    for i in 1:3
+        # Add each plot to the subplot grid
+        p = plot(time_hours, orbitEls_time[i,:].-orbitEls_targ_physical[i],legend=false)
+        plot!(time_hours, zeros(size(time_hours)), ls=:dash)
+        ylabel!("error $(orbitLabels[i])")
+        push!(plot_list,p)
+    end
+    p_OrbitElsError=plot(plot_list..., layout=(3,1), size=(600,600))
+    xlabel!("Time (hours)")
+    # Display the plot
+    display(p_OrbitElsError)
 
     figure_directory = "C:/Users/marlo/MATLAB Drive/6015/Final Project/Julia/Figures/"
-    savefig(trajectory_plot, figure_directory * "trajectory.png")
-    savefig(control_plot, figure_directory * "control.png")
+    extra = "messingWcutOff_"
+    savefig(trajectory_plot, figure_directory * extra * "trajectory.png")
+    savefig(control_plot, figure_directory * extra* "control.png")
+    # savefig(orbitEls_time, figure_directory * extra* "orbitElsOverTime.png")
 
 end
 
@@ -328,7 +372,7 @@ function monteCarlo()
     k = 2.0
 
     # Time span and solve
-    tmax = 20 / TU * 3600.0
+    tmax = 19 / TU * 3600.0
     # tmax = 18.7867/TU*60^2;
     tspan = (0.0, tmax)  # Canonical time
     error = zeros(6,length(Fdist))
@@ -385,10 +429,11 @@ function monteCarlo()
     display(p_LandAerror)
     
     figure_directory = "C:/Users/marlo/MATLAB Drive/6015/Final Project/Julia/Figures/"
-    savefig(p_allOrbitEls, figure_directory * "allOrbitEls.png")
-    savefig(p_OrbitElsError, figure_directory * "OrbitElsError.png")
-    savefig(p_LandAerror, figure_directory * "LandAerror.png")
+    extra = "messingWcutOff_"
+    savefig(p_allOrbitEls, figure_directory * extra* "allOrbitEls.png")
+    savefig(p_OrbitElsError, figure_directory * extra * "OrbitElsError.png")
+    savefig(p_LandAerror, figure_directory * extra * "LandAerror.png")
 end
 
 main()
-monteCarlo()
+# monteCarlo()
