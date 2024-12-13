@@ -60,6 +60,39 @@ function rv2orbitEls(posVel, mu::Float64, using_trueAnomaly::Int = 0)
     return orbitEls, NO
 end
 
+function orbitEls2rv(orbitEls::Vector{Float64}, mu::Float64)
+    # Unpack orbital elements
+    a = orbitEls[1]
+    e = orbitEls[2]
+    i = orbitEls[3]
+    OMEGA = orbitEls[4]
+    omega = orbitEls[5]
+    nu = orbitEls[6]
+
+    # Calculate parameters
+    p = a * (1 - e^2)
+    h = sqrt(mu * p)
+    # nu = nuFromM(M, a, e, mu)  # True anomaly
+    r = p / (1 + e * cos(nu))
+
+    # Position and velocity in the orbit frame
+    r_O = [r; 0; 0]
+    v_O = (mu / h) * [e * sin(nu); 1 + e * cos(nu); 0]
+
+    # Rotation matrices
+    theta = omega + nu
+    ON = R3(theta) * R1(i) * R3(OMEGA)
+    NO = transpose(ON)
+
+    # Transform to inertial frame
+    r_N = NO * r_O
+    v_N = NO * v_O
+
+    # Combine position and velocity
+    posVel = vcat(r_N, v_N)
+    return posVel, NO
+end
+
 # Helper functions for rotation matrices
 function R1(angle::Float64)
     return [
@@ -89,9 +122,8 @@ function control_F(r::Array{Float64, 2}, v::Array{Float64, 2}, L_targ::Array{Flo
         delta_A = A - A_targ
         G = -(cross(k * delta_L, r[:, i]) + cross(L, delta_A) + cross(cross(delta_A, v[:, i]), r[:, i]))
         if norm(G) < epsilon * Fmax
-            # F[:, i] = G / epsilon
+            F[:, i] = G / epsilon
             # F[:, i] = zeros(3,1)
-            F[:, i] = Fmax * G / (epsilon * Fmax)
         else
             F[:, i] = Fmax * G / norm(G)
         end
@@ -183,11 +215,13 @@ function terminate_condition(u,t,integrator, L_targ, A_targ, Fmax, k, epsilon, m
     v = u[4:6]  # Extract velocity from state vector
     L = cross(r, v)
     A = cross(v, L) - mu * r / norm(r)
-    delta_L = L - L_targ
+    delta_L = 
+    L - L_targ
     delta_A = A - A_targ
-    # G = -(cross(k * delta_L, r) + cross(L, delta_A) + cross(cross(delta_A, v), r))
-    # return norm(G) <= epsilon*Fmax
-    return (norm(delta_L) < 1.6e-2) & (norm(delta_A) < 0.9e-3)
+    G = -(cross(k * delta_L, r) + cross(L, delta_A) + cross(cross(delta_A, v), r))
+    return norm(G) <= epsilon*Fmax
+    # return sqrt(0.5*k*norm(delta_L)^2 + 0.5*norm(delta_A)^2) < 0.0155
+    # return sqrt(0.5*k*norm(delta_L)^2 + 0.5*norm(delta_A)^2) < 0.017
     # return (norm(delta_L) < 1.6e-2) & (norm(delta_A) < 1e-3)
 end
 
@@ -337,7 +371,7 @@ function main()
     extra = "messingWcutOff_"
     savefig(trajectory_plot, figure_directory * extra * "trajectory.png")
     savefig(control_plot, figure_directory * extra* "control.png")
-    # savefig(orbitEls_time, figure_directory * extra* "orbitElsOverTime.png")
+    savefig(p_OrbitElsError, figure_directory * extra* "orbitElsError.png")
 
 end
 
@@ -382,7 +416,8 @@ function monteCarlo()
         prob = ODEProblem((du, u, p, t) -> dynamics!(du, u, L_targ, A_targ, Fmax, k, epsilon, mu_canonical, Fpert, t), x0, tspan)
         terminate_affect!(integrator) = terminate!(integrator)
         terminate_cb = DiscreteCallback((u,t,integrator)->terminate_condition(u,t,integrator, L_targ, A_targ, Fmax, k, epsilon, mu_canonical),terminate_affect!)
-        sol = solve(prob, Tsit5(), reltol=1e-10, abstol=1e-10, saveat=tmax/1000.0, callback=terminate_cb)
+        # sol = solve(prob, Tsit5(), reltol=1e-10, abstol=1e-10, saveat=tmax/1000.0, callback=terminate_cb)
+        sol = solve(prob, Vern7(), reltol=1e-10, abstol=1e-10, saveat=tmax/1000.0, callback=terminate_cb)
         xf = sol.u[end]
         xf_physical = [xf[1:3]*DU; xf[4:6]*DU/TU]
         Lf, Af = x2LA(xf, mu_canonical);
@@ -435,5 +470,131 @@ function monteCarlo()
     savefig(p_LandAerror, figure_directory * extra * "LandAerror.png")
 end
 
-main()
-# monteCarlo()
+function monteCarlo_x0()
+        
+    # Canonical units from Earth's surface
+    TU = 806.812  # s
+    DU = 6378.140  # km
+    mu_canonical = 1.0  # Canonical units
+    mu = 3.986004415e5  # km^3/s^2
+
+    Fmax = 0.01  # Canonical units (9.8e-5 km/s^2)
+
+    # Initial conditions
+    r0 = [-0.70545852988580, -0.73885031681775, -0.40116299069586]
+    v0 = [0.73122658145185, -0.53921753373056, -0.29277123328399]
+    x0 = vcat(r0, v0)
+    
+    orbitEls_t0,_ = rv2orbitEls(x0, mu_canonical, 1);
+    println(orbitEls_t0)
+    mean = 0.0       # Mean
+    sigma_percent = 0.01;
+    n = 100
+    orbitEls_dist = zeros(6,n)
+    for i = 1:3
+        dist = Normal(mean, sigma_percent*orbitEls_t0[i])  # Define the normal distribution
+        orbitEls_dist[i,:] = rand(dist, n).+orbitEls_t0[i]  # Generate n samples 
+    end
+    orbitEls_dist[2,:] = abs.(orbitEls_dist[2,:])
+
+    # Target angular momentum and Laplace vector
+    L_targ = [0.0, 0.0, 2.56612389857378]
+    A_targ = [0.0, 0.0, 0.0]
+    orbitEls_targ = [42000/DU; 0; 0; 0; 0; 0];
+    orbitEls_targ_physical = [42000; 0; 0; 0; 0; 0];
+
+    # Tuning parameters
+    epsilon = 0.00001
+    k = 2.0
+
+    # Time span and solve
+    tmax = 19 / TU * 3600.0
+    # tmax = 18.7867/TU*60^2;
+    tspan = (0.0, tmax)  # Canonical time
+    error = zeros(6,size(orbitEls_dist,2))
+    orbitEls_tf = zeros(6,size(orbitEls_dist,2))
+    for i in 1:size(orbitEls_dist,2)
+        println(orbitEls_dist[:,i])
+        x0, _ = orbitEls2rv(orbitEls_dist[:,i], mu_canonical)
+        prob = ODEProblem((du, u, p, t) -> dynamics!(du, u, L_targ, A_targ, Fmax, k, epsilon, mu_canonical, 0.0, t), x0, tspan)
+        terminate_affect!(integrator) = terminate!(integrator)
+        terminate_cb = DiscreteCallback((u,t,integrator)->terminate_condition(u,t,integrator, L_targ, A_targ, Fmax, k, epsilon, mu_canonical),terminate_affect!)
+        # sol = solve(prob, Tsit5(), reltol=1e-10, abstol=1e-10, saveat=tmax/1000.0, callback=terminate_cb)
+        sol = solve(prob, Vern7(), reltol=1e-10, abstol=1e-10, saveat=tmax/1000.0, callback=terminate_cb)
+        xf = sol.u[end]
+        xf_physical = [xf[1:3]*DU; xf[4:6]*DU/TU]
+        Lf, Af = x2LA(xf, mu_canonical);
+        error[:,i] = [Lf - L_targ; Af - A_targ];
+        orbitEls_tf[:,i],_ = rv2orbitEls(xf_physical, mu, 1);
+    end
+
+    orbitEls_tf_deg = [orbitEls_tf[1:2,:]; orbitEls_tf[3:end,:] .* 180.0 ./ pi]
+    orbitLabels = ["a (km)", "e", "i (deg)", "\u03A9 (deg)", "\u03C9 (deg)", "\u03BD (deg)"]
+    # # Create subplots
+    plot_list1 = []
+    plot_list2 = []
+    for i in 1:3
+        # Add each plot to the subplot grid
+        h1 = histogram(orbitEls_tf_deg[i,:].-orbitEls_targ_physical[i],legend=false)
+        ylabel!("# occurances")
+        xlabel!("Error in $(orbitLabels[i])")
+        push!(plot_list1,h1)
+        h2 = histogram(orbitEls_dist[i,:],legend=false)
+        ylabel!("# occurances")
+        xlabel!("$(orbitLabels[i])")
+        push!(plot_list1,h1)
+    end
+    h_orbitError=plot(plot_list1..., layout=(1,3), size=(600,600))
+    h_orbitEls0=plot(plot_list2..., layout=(1,3), size=(600,600))
+    # Display the plot
+    display(h_orbitError)
+    display(h_orbitEls0)
+
+    # # Define variables
+    # orbitLabels = ["a (km)", "e", "i (deg)", "\u03A9 (deg)", "\u03C9 (deg)", "\u03BD (deg)"]
+    # desOrbitEls = [orbitEls_targ_physical[1:3]; NaN.*ones(3,1)];
+    # orbitEls_tf_deg = [orbitEls_tf[1:2,:]; orbitEls_tf[3:end,:] .* 180.0 ./ pi]
+    # # # Create subplots
+    # plot_list = []
+    # for i in 1:6
+    #   # Add each plot to the subplot grid
+    #     p = scatter(Fdist, orbitEls_tf_deg[i,:],legend=false)
+    #     plot!(Fdist, [desOrbitEls[i] for _ in Fdist], LineStyle=:dot)
+    #     ylabel!(orbitLabels[i])
+    #     push!(plot_list,p)
+    # end
+    # p_allOrbitEls=plot(plot_list..., layout=(6,1), size=(600,700))
+    # xlabel!("Control Force Perturbation")
+    # # Display the plot
+    # display(p_allOrbitEls)
+
+    # # # Create subplots
+    # plot_list = []
+    # for i in 1:3
+    #     # Add each plot to the subplot grid
+    #     p = scatter(Fdist, orbitEls_tf_deg[i,:].-orbitEls_targ_physical[i],legend=false)
+    #     plot!([minimum(Fdist), maximum(Fdist)], [0, 0], ls=:dash)
+    #     ylabel!("error $(orbitLabels[i])")
+    #     push!(plot_list,p)
+    # end
+    # p_OrbitElsError=plot(plot_list..., layout=(3,1), size=(600,600))
+    # xlabel!("Control Force Perturbation")
+    # # Display the plot
+    # display(p_OrbitElsError)
+    
+
+    # pL = scatter(Fdist, column_norms(error[1:3,:]), label="||Error(L)||")
+    # pA = scatter(Fdist, column_norms(error[4:6,:]), label="||Error(A)||")
+    # p_LandAerror = plot(pL,pA, layout=(2,1))
+    # display(p_LandAerror)
+    
+    figure_directory = "C:/Users/marlo/MATLAB Drive/6015/Final Project/Julia/Figures/"
+    extra = ""
+    # savefig(p_allOrbitEls, figure_directory * extra* "allOrbitEls.png")
+    # savefig(p_OrbitElsError, figure_directory * extra * "OrbitElsError.png")
+    savefig(h_orbitError, figure_directory * extra * "varyingx0.png")
+    savefig(h_orbitEls0, figure_directory * extra * "InitialOrbitEls.png")
+end
+
+# main()
+monteCarlo_x0()
