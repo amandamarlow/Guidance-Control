@@ -122,13 +122,14 @@ function control_F(r::Array{Float64, 2}, v::Array{Float64, 2}, L_targ::Array{Flo
         delta_A = A - A_targ
         G = -(cross(k * delta_L, r[:, i]) + cross(L, delta_A) + cross(cross(delta_A, v[:, i]), r[:, i]))
         if norm(G) < epsilon * Fmax
-            F[:, i] = G / epsilon
+            F[:, i] = (G / epsilon) * (1 + Fpert/Fmax)
             # F[:, i] = zeros(3,1)
         else
-            F[:, i] = Fmax * G / norm(G)
+            F[:, i] = (Fmax + Fpert) * G / norm(G)
         end
     end
-    return F+Fpert*ones(3,1)
+    # return F+Fpert*ones(3,1)
+    return F
 end
 
 # Julia implementation of lowThrustDynamics function
@@ -291,6 +292,7 @@ function main()
     # sol = solve(prob, Tsit5(), reltol=1e-10, abstol=1e-10,saveat=tmax/1000.0)
     # sol = solve(prob, Vern9(), saveat=tmsax/1000.0)
     sol = solve(prob, Vern7(), reltol=1e-10, abstol=1e-10, saveat=tmax/1000.0, callback=terminate_cb, maxiters=1e7)
+    # sol = solve(prob, Vern7(), reltol=1e-10, abstol=1e-10, saveat=tmax/1000.0, maxiters=1e7)
     # sol = solve(prob, AutoVern7(Rodas5()), saveat=tmax/1000.0, callback=terminate_cb, maxiters=1e7)
 
     # Compute control forces
@@ -357,7 +359,7 @@ function main()
     plot_list = []
     for i in 1:3
         # Add each plot to the subplot grid
-        p = plot(time_hours, orbitEls_time[i,:].-orbitEls_targ_physical[i],legend=false)
+        p = plot(time_hours, orbitEls_time[i,:].-orbitEls_targ_physical[i],legend=false, linewidth=2)
         plot!(time_hours, zeros(size(time_hours)), ls=:dash)
         ylabel!("error $(orbitLabels[i])")
         push!(plot_list,p)
@@ -368,7 +370,7 @@ function main()
     display(p_OrbitElsError)
 
     figure_directory = "C:/Users/marlo/MATLAB Drive/6015/Final Project/Julia/Figures/"
-    extra = "messingWcutOff_"
+    extra = ""
     savefig(trajectory_plot, figure_directory * extra * "trajectory.png")
     savefig(control_plot, figure_directory * extra* "control.png")
     savefig(p_OrbitElsError, figure_directory * extra* "orbitElsError.png")
@@ -424,7 +426,7 @@ function monteCarlo()
         error[:,i] = [Lf - L_targ; Af - A_targ];
         orbitEls_tf[:,i],_ = rv2orbitEls(xf_physical, mu, 1);
     end
-
+    Fdist_physical = Fdist.*DU./TU./TU.*1000.0
     # Define variables
     orbitLabels = ["a (km)", "e", "i (deg)", "\u03A9 (deg)", "\u03C9 (deg)", "\u03BD (deg)"]
     desOrbitEls = [orbitEls_targ_physical[1:3]; NaN.*ones(3,1)];
@@ -433,13 +435,13 @@ function monteCarlo()
     plot_list = []
     for i in 1:6
       # Add each plot to the subplot grid
-        p = scatter(Fdist, orbitEls_tf_deg[i,:],legend=false)
+        p = scatter(Fdist_physical, orbitEls_tf_deg[i,:],legend=false)
         plot!(Fdist, [desOrbitEls[i] for _ in Fdist], LineStyle=:dot)
         ylabel!(orbitLabels[i])
         push!(plot_list,p)
     end
     p_allOrbitEls=plot(plot_list..., layout=(6,1), size=(600,700))
-    xlabel!("Control Force Perturbation")
+    xlabel!("Control Force Perturbation (m/s^2)")
     # Display the plot
     display(p_allOrbitEls)
 
@@ -447,24 +449,24 @@ function monteCarlo()
     plot_list = []
     for i in 1:3
         # Add each plot to the subplot grid
-        p = scatter(Fdist, orbitEls_tf_deg[i,:].-orbitEls_targ_physical[i],legend=false)
-        plot!([minimum(Fdist), maximum(Fdist)], [0, 0], ls=:dash)
+        p = scatter(Fdist_physical, orbitEls_tf_deg[i,:].-orbitEls_targ_physical[i],legend=false)
+        plot!([minimum(Fdist_physical), maximum(Fdist_physical)], [0, 0], ls=:dash)
         ylabel!("error $(orbitLabels[i])")
         push!(plot_list,p)
     end
     p_OrbitElsError=plot(plot_list..., layout=(3,1), size=(600,600))
-    xlabel!("Control Force Perturbation")
+    xlabel!("Control Force Perturbation (m/s^2)")
     # Display the plot
     display(p_OrbitElsError)
     
 
-    pL = scatter(Fdist, column_norms(error[1:3,:]), label="||Error(L)||")
-    pA = scatter(Fdist, column_norms(error[4:6,:]), label="||Error(A)||")
+    pL = scatter(Fdist_physical, column_norms(error[1:3,:]).*DU.*DU./TU, label="||Error(L)||")
+    pA = scatter(Fdist_physical, column_norms(error[4:6,:]), label="||Error(A)||")
     p_LandAerror = plot(pL,pA, layout=(2,1))
     display(p_LandAerror)
     
     figure_directory = "C:/Users/marlo/MATLAB Drive/6015/Final Project/Julia/Figures/"
-    extra = "messingWcutOff_"
+    extra = "scaled_Fpert"
     savefig(p_allOrbitEls, figure_directory * extra* "allOrbitEls.png")
     savefig(p_OrbitElsError, figure_directory * extra * "OrbitElsError.png")
     savefig(p_LandAerror, figure_directory * extra * "LandAerror.png")
@@ -486,13 +488,12 @@ function monteCarlo_x0()
     x0 = vcat(r0, v0)
     
     orbitEls_t0,_ = rv2orbitEls(x0, mu_canonical, 1);
-    println(orbitEls_t0)
     mean = 0.0       # Mean
-    sigma_percent = 0.01;
+    sigma = [0.05*orbitEls_t0[1]; 0.05; 0.05*orbitEls_t0[3]; 0; 0; 0];
     n = 100
     orbitEls_dist = zeros(6,n)
-    for i = 1:3
-        dist = Normal(mean, sigma_percent*orbitEls_t0[i])  # Define the normal distribution
+    for i = 1:6
+        dist = Normal(mean, sigma[i])  # Define the normal distribution
         orbitEls_dist[i,:] = rand(dist, n).+orbitEls_t0[i]  # Generate n samples 
     end
     orbitEls_dist[2,:] = abs.(orbitEls_dist[2,:])
@@ -514,7 +515,7 @@ function monteCarlo_x0()
     error = zeros(6,size(orbitEls_dist,2))
     orbitEls_tf = zeros(6,size(orbitEls_dist,2))
     for i in 1:size(orbitEls_dist,2)
-        println(orbitEls_dist[:,i])
+        # println(orbitEls_dist[:,i])
         x0, _ = orbitEls2rv(orbitEls_dist[:,i], mu_canonical)
         prob = ODEProblem((du, u, p, t) -> dynamics!(du, u, L_targ, A_targ, Fmax, k, epsilon, mu_canonical, 0.0, t), x0, tspan)
         terminate_affect!(integrator) = terminate!(integrator)
@@ -529,6 +530,13 @@ function monteCarlo_x0()
     end
 
     orbitEls_tf_deg = [orbitEls_tf[1:2,:]; orbitEls_tf[3:end,:] .* 180.0 ./ pi]
+    orbitEls_dist_physical = zeros(size(orbitEls_dist))
+    orbitEls_dist_physical[1,:] = orbitEls_dist[1,:].*DU
+    orbitEls_dist_physical[2,:] = orbitEls_dist[2,:]
+    orbitEls_dist_physical[3,:] = orbitEls_dist[3,:].*180.0/pi
+    orbitEls_dist_physical[4,:] = orbitEls_dist[3,:].*180.0/pi
+    orbitEls_dist_physical[5,:] = orbitEls_dist[3,:].*180.0/pi
+    orbitEls_dist_physical[6,:] = orbitEls_dist[3,:].*180.0/pi
     orbitLabels = ["a (km)", "e", "i (deg)", "\u03A9 (deg)", "\u03C9 (deg)", "\u03BD (deg)"]
     # # Create subplots
     plot_list1 = []
@@ -539,62 +547,23 @@ function monteCarlo_x0()
         ylabel!("# occurances")
         xlabel!("Error in $(orbitLabels[i])")
         push!(plot_list1,h1)
-        h2 = histogram(orbitEls_dist[i,:],legend=false)
+        h2 = histogram(orbitEls_dist_physical[i,:],legend=false)
         ylabel!("# occurances")
         xlabel!("$(orbitLabels[i])")
-        push!(plot_list1,h1)
+        push!(plot_list2,h2)
     end
-    h_orbitError=plot(plot_list1..., layout=(1,3), size=(600,600))
-    h_orbitEls0=plot(plot_list2..., layout=(1,3), size=(600,600))
+    h_orbitError=plot(plot_list1..., layout=(1,3), size=(900,600))
+    h_orbitEls0=plot(plot_list2..., layout=(1,3), size=(900,600))
     # Display the plot
     display(h_orbitError)
     display(h_orbitEls0)
-
-    # # Define variables
-    # orbitLabels = ["a (km)", "e", "i (deg)", "\u03A9 (deg)", "\u03C9 (deg)", "\u03BD (deg)"]
-    # desOrbitEls = [orbitEls_targ_physical[1:3]; NaN.*ones(3,1)];
-    # orbitEls_tf_deg = [orbitEls_tf[1:2,:]; orbitEls_tf[3:end,:] .* 180.0 ./ pi]
-    # # # Create subplots
-    # plot_list = []
-    # for i in 1:6
-    #   # Add each plot to the subplot grid
-    #     p = scatter(Fdist, orbitEls_tf_deg[i,:],legend=false)
-    #     plot!(Fdist, [desOrbitEls[i] for _ in Fdist], LineStyle=:dot)
-    #     ylabel!(orbitLabels[i])
-    #     push!(plot_list,p)
-    # end
-    # p_allOrbitEls=plot(plot_list..., layout=(6,1), size=(600,700))
-    # xlabel!("Control Force Perturbation")
-    # # Display the plot
-    # display(p_allOrbitEls)
-
-    # # # Create subplots
-    # plot_list = []
-    # for i in 1:3
-    #     # Add each plot to the subplot grid
-    #     p = scatter(Fdist, orbitEls_tf_deg[i,:].-orbitEls_targ_physical[i],legend=false)
-    #     plot!([minimum(Fdist), maximum(Fdist)], [0, 0], ls=:dash)
-    #     ylabel!("error $(orbitLabels[i])")
-    #     push!(plot_list,p)
-    # end
-    # p_OrbitElsError=plot(plot_list..., layout=(3,1), size=(600,600))
-    # xlabel!("Control Force Perturbation")
-    # # Display the plot
-    # display(p_OrbitElsError)
     
-
-    # pL = scatter(Fdist, column_norms(error[1:3,:]), label="||Error(L)||")
-    # pA = scatter(Fdist, column_norms(error[4:6,:]), label="||Error(A)||")
-    # p_LandAerror = plot(pL,pA, layout=(2,1))
-    # display(p_LandAerror)
-    
-    figure_directory = "C:/Users/marlo/MATLAB Drive/6015/Final Project/Julia/Figures/"
-    extra = ""
-    # savefig(p_allOrbitEls, figure_directory * extra* "allOrbitEls.png")
-    # savefig(p_OrbitElsError, figure_directory * extra * "OrbitElsError.png")
+    figure_directory = "C:/Users/marlo/MATLAB Drive/6015/Final Project/Julia/Figures/";
+    extra = "";
     savefig(h_orbitError, figure_directory * extra * "varyingx0.png")
     savefig(h_orbitEls0, figure_directory * extra * "InitialOrbitEls.png")
 end
 
-# main()
-monteCarlo_x0()
+main()
+# monteCarlo()
+# monteCarlo_x0()
